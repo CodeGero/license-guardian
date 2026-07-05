@@ -1,0 +1,86 @@
+name: 'License Guardian — Dependency License Compliance Checker'
+description: 'Scan dependencies for license compliance. Flags GPL, AGPL, SSPL, and other restrictive licenses. Works with npm, pip, go, and cargo.'
+author: 'kryptorious'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  working-directory:
+    description: 'Directory to scan. Defaults to repository root.'
+    required: false
+    default: '.'
+  allow:
+    description: 'Comma-separated list of SPDX license identifiers to always allow.'
+    required: false
+    default: ''
+  deny:
+    description: 'Comma-separated list of SPDX license identifiers to deny explicitly (overrides built-in restrictive list).'
+    required: false
+    default: ''
+  fail-on-restrictive:
+    description: 'Exit with non-zero code when a restrictive license is found.'
+    required: false
+    default: 'true'
+  annotate:
+    description: 'Post GitHub PR annotations for license violations.'
+    required: false
+    default: 'true'
+  scan-npm:
+    description: 'Scan package.json dependencies.'
+    required: false
+    default: 'true'
+  scan-pip:
+    description: 'Scan requirements.txt dependencies.'
+    required: false
+    default: 'true'
+  scan-go:
+    description: 'Scan go.mod dependencies.'
+    required: false
+    default: 'true'
+  scan-cargo:
+    description: 'Scan Cargo.toml dependencies.'
+    required: false
+    default: 'true'
+
+outputs:
+  violations:
+    description: 'Number of license violations detected.'
+    value: ${{ steps.scan.outputs.violations }}
+  report:
+    description: 'Path to the full scan report.'
+    value: ${{ steps.scan.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: License Scan
+      id: scan
+      shell: bash
+      env:
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_ALLOW: ${{ inputs.allow }}
+        INPUT_DENY: ${{ inputs.deny }}
+        INPUT_FAIL_ON_RESTRICTIVE: ${{ inputs.fail-on-restrictive }}
+        INPUT_ANNOTATE: ${{ inputs.annotate }}
+        INPUT_SCAN_NPM: ${{ inputs.scan-npm }}
+        INPUT_SCAN_PIP: ${{ inputs.scan-pip }}
+        INPUT_SCAN_GO: ${{ inputs.scan-go }}
+        INPUT_SCAN_CARGO: ${{ inputs.scan-cargo }}
+      run: |
+        REPORT="${{ runner.temp }}/license-report.txt"
+        echo "report=$REPORT" >> "$GITHUB_OUTPUT"
+
+        python3 "${{ github.action_path }}/scripts/check-licenses.py" 2>&1 | tee "$REPORT"
+        EXIT_CODE=${PIPESTATUS[0]}
+
+        # Count violations from the report
+        VIOLATIONS=$(grep -c '::error' "$REPORT" 2>/dev/null || echo "0")
+        echo "violations=$VIOLATIONS" >> "$GITHUB_OUTPUT"
+
+        exit $EXIT_CODE
